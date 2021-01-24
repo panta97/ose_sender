@@ -77,8 +77,7 @@ def download_cpe(manual_dates=None):
     # CHECK IF THERE ARE CPES LEFT TO BE SEND (NULL)
     # IN ORDER TO DOWNLOAD THE CPES
     if cpes_check(None):
-        print('THERE ARE CPES LEFT TO BE SEND (NULL)')
-        return
+        raise Exception('THERE ARE CPES LEFT TO BE SEND (NULL)')
 
     if manual_dates is None:
         pendings = get_pending_cpes()
@@ -90,11 +89,30 @@ def download_cpe(manual_dates=None):
             cpe = result_obj['content']
             execute_sql(cpe['content'])
 
+    if len(pendings) > 0:
+        result = "DOWNLOADED DATES: {} FROM S3".format(
+            ", ".join(pendings)
+        )
+    else:
+        result = "THERE ARE NO CPES LEFT TO DOWNLOAD"
+    return result
+
+
+def get_pending_dates():
+    dates_query = """
+    select distinct fecha
+    from cpe_aux
+    where enviado = 'pending'
+    order by fecha desc;
+    """
+    pending_dates = get_ncs(dates_query)
+    pending_dates = list(map(lambda x: x[0], pending_dates))
+    return pending_dates
+
 def send_cpe():
     # CHECK IF THERE ARE CPES TO BE CONFIRMED (PENDING)
     if cpes_check('pending'):
-        print('THERE ARE CPES TO BE CONFIRMED (PENDING)')
-        return
+        raise Exception('THERE ARE CPES TO BE CONFIRMED (PENDING)')
 
     # A BUNDLE HAS A MAX CPES OF 500 ANYTHING MORE THAN THAT
     # WILL PRODUCE ERRORS
@@ -134,9 +152,35 @@ def send_cpe():
     """
     execute_sql(upload_query)
 
+    # CREATE RESULT
+    pending_dates = get_pending_dates()
+    result = "SENT CPES DATES FROM '{}' TO '{}' INTO CPE TABLE" \
+        .format(pending_dates[0], pending_dates[len(pending_dates) - 1])
+    return result
+
 def confirm_cpe():
+    # GET PENDING CPES BEFORE UPDATING THEM
+    pending_dates = get_pending_dates()
+
     confirm_query = """
     update cpe_aux set enviado = 'yes'
     where enviado = 'pending';
     """
     execute_sql(confirm_query)
+
+    result = "UPDATED CPES DATES FROM '{}' TO '{}'" \
+        .format(pending_dates[0], pending_dates[len(pending_dates) - 1])
+
+    cpes_null_query = """
+    select count(1)
+    from cpe_aux
+    where enviado is NULL;
+    """
+    cpes_null_count = get_ncs(cpes_null_query)[0][0]
+
+    if cpes_null_count > 0:
+        result += '\n'
+        result += 'THERE ARE STILL {} YET TO BE SENT...' \
+            .format(cpes_null_count)
+
+    return result
