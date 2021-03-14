@@ -103,7 +103,7 @@ def get_pending_dates():
     select distinct fecha
     from cpe_aux
     where enviado = 'pending'
-    order by fecha desc;
+    order by fecha asc;
     """
     pending_dates = get_ncs(dates_query)
     pending_dates = list(map(lambda x: x[0], pending_dates))
